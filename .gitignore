@@ -1,3 +1,12 @@
  /InputVideo
+/OutputVideo
+/Models
 /.venv
+/MiniMaxH3
+/wan2.2-FirstTry
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
 /InputVideo

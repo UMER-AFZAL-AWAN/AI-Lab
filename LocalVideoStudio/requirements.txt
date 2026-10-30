@@ -1,0 +1,12 @@
+# LocalVideoStudio – additional Python dependencies
+# Install with:  pip install -r requirements.txt
+# (run from C:\AI-Lab with the .venv active)
+
+# Core generation
+diffusers>=0.30.0
+transformers>=4.40.0
+accelerate>=0.30.0
+sentencepiece>=0.2.0
+
+# Tensor utilities (already in .venv but listed for completeness)
+safetensors>=0.4.0
