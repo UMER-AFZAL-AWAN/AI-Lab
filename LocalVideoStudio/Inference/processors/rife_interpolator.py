@@ -47,7 +47,7 @@ class RifeInterpolator(IVideoProcessor):
         tmp_dir = Path(tempfile.mkdtemp(prefix="lvs_rife_"))
         try:
             cfr_path = tmp_dir / "cfr_input.mp4"
-            print("  [rife] normalising VFR → CFR 30 fps…")
+            print("  [rife] normalising VFR -> CFR 30 fps...")
             self._to_cfr(input_path, cfr_path)
 
             cmd = self._build_command(cfr_path, output_path, cfg)
@@ -71,7 +71,7 @@ class RifeInterpolator(IVideoProcessor):
                 "-vf", "fps=30",
                 "-vsync", "cfr",
                 "-c:v", "libx264", "-crf", "18", "-preset", "fast",
-                "-an",
+                "-c:a", "copy",
                 str(cfr_path),
             ],
             check=True,
