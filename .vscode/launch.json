@@ -1,0 +1,58 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "LVS: enhance",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Inference.cli",
+            "args": [
+                "enhance",
+                "--input",  "C:/AI-Lab/InputVideo/input.mp4",
+                "--output", "C:/AI-Lab/OutputVideo/enhanced.mp4"
+            ],
+            "cwd": "${workspaceFolder}/LocalVideoStudio",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "LVS: inject",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Inference.cli",
+            "args": [
+                "inject",
+                "--input",     "C:/AI-Lab/OutputVideo/enhanced.mp4",
+                "--output",    "C:/AI-Lab/OutputVideo/with_scene_v2.mp4",
+                "--timestamp", "10.0",
+                "--prompt",    "A footballer stands in golden dramatic light, slow motion, anime cinematic style",
+                "--duration",  "4",
+                "--transition","0.5"
+            ],
+            "cwd": "${workspaceFolder}/LocalVideoStudio",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "LVS: dry-run inject (no GPU)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/LocalVideoStudio/test_inject_dryrun.py",
+            "cwd": "${workspaceFolder}/LocalVideoStudio",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        }
+    ]
+}
