@@ -129,8 +129,11 @@ class StudioPipeline:
         anchors and chained crossfade transitions.
 
         Structure:
-          game plays -> freezes on frame T -> dissolves to AI scene ->
-          dissolves back to same frame T -> game resumes from T.
+          game plays -> freezes on frame T (1s still) -> dissolves to AI scene ->
+          dissolves back to same frame T (1s still) -> game resumes from T.
+
+        Freeze is applied with tpad=clone so the frozen frame is pixel-identical
+        to the actual last/first decoded frame — no PNG extraction, no codec seam.
 
         input_path must already be enhanced — this method does not re-enhance
         the game footage.
@@ -140,54 +143,27 @@ class StudioPipeline:
         gen_fps = 8
         half_frames = max(8, (loop_duration_sec * gen_fps) // 2)
         video_fps = 60
+        freeze_hold_sec = 1.0
 
         with _TempDir() as tmp:
             part1 = tmp / "part1.mp4"
             part2 = tmp / "part2.mp4"
 
-            print(f"[1/8] Splitting video at {timestamp_seconds}s...")
+            print(f"[1/7] Splitting video at {timestamp_seconds}s...")
             self._split_video(input_path, timestamp_seconds, part1, part2)
 
-            print("[2/8] Probing input dimensions...")
+            print("[2/7] Probing input dimensions...")
             vid_w, vid_h = CrossfadeTransitioner._get_dimensions(input_path)
 
-            print("[3/8] Extracting freeze frame from part1...")
-            frame_png = tmp / "freeze_frame.png"
-            self._extract_frame(part1, frame_png)
-
-            print("[4/8] Creating freeze-hold clip (1s still)...")
-            freeze_hold = tmp / "freeze_hold.mp4"
-            self._create_freeze_hold(frame_png, freeze_hold,
-                                     duration=1.0, fps=video_fps,
-                                     width=vid_w, height=vid_h)
-
-            print("[5/8] Building part1_frozen and part2_frozen...")
+            print("[3/7] Freezing last frame of part1 (tpad clone)...")
             part1_frozen = tmp / "part1_frozen.mp4"
+            self._freeze_tail(part1, part1_frozen, freeze_hold_sec, video_fps)
+
+            print("[4/7] Freezing first frame of part2 (tpad clone)...")
             part2_frozen = tmp / "part2_frozen.mp4"
+            self._freeze_head(part2, part2_frozen, freeze_hold_sec, video_fps)
 
-            c1 = tmp / "c1.txt"
-            c1.write_text(
-                f"file '{part1.as_posix()}'\nfile '{freeze_hold.as_posix()}'\n",
-                encoding="utf-8",
-            )
-            subprocess.run(
-                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                 "-i", str(c1), "-c", "copy", str(part1_frozen)],
-                check=True, capture_output=True,
-            )
-
-            c2 = tmp / "c2.txt"
-            c2.write_text(
-                f"file '{freeze_hold.as_posix()}'\nfile '{part2.as_posix()}'\n",
-                encoding="utf-8",
-            )
-            subprocess.run(
-                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                 "-i", str(c2), "-c", "copy", str(part2_frozen)],
-                check=True, capture_output=True,
-            )
-
-            print("[6/8] Generating AnimateDiff seamless loop...")
+            print("[5/7] Generating AnimateDiff seamless loop...")
             request = GenerationRequest(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
@@ -203,7 +179,7 @@ class StudioPipeline:
             result = self._generator.generate_seamless_loop(request)
             export_to_video(result.frames, str(loop_raw), fps=result.fps)
 
-            print("[7/8] Grading loop to match game footage...")
+            print("[6/7] Grading loop to match game footage...")
             loop_graded = tmp / "loop_graded.mp4"
             self._enhancer.process(
                 loop_raw,
@@ -211,7 +187,7 @@ class StudioPipeline:
                 EnhancementConfig(auto_crop=False, cinematic_bars=False),
             )
 
-            print("[8/8] Chained xfade: part1_frozen -> loop -> part2_frozen...")
+            print("[7/7] Chained xfade: part1_frozen -> loop -> part2_frozen...")
             self._chained_xfade(
                 part1_frozen, loop_graded, part2_frozen,
                 output_path,
@@ -301,26 +277,55 @@ class StudioPipeline:
         export_to_video(result.frames, str(output_path), fps=result.fps)
 
     @staticmethod
-    def _create_freeze_hold(
-        frame_png: Path,
+    def _freeze_tail(
+        video_path: Path,
         output_path: Path,
         duration: float,
         fps: int,
-        width: int,
-        height: int,
     ) -> None:
-        """Turns a single PNG into a short video clip of the given duration."""
+        """Extends video by cloning its actual last frame for `duration` seconds.
+
+        Uses tpad so the frozen frame is pixel-identical to the final decoded
+        frame — no PNG extraction, no codec seam.
+        """
+        stop_frames = round(duration * fps)
         subprocess.run(
             [
                 "ffmpeg", "-y",
-                "-loop", "1",
-                "-framerate", str(fps),
-                "-i", str(frame_png),
-                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=disable",
-                "-t", str(duration),
-                "-c:v", "libx264",
+                "-i", str(video_path),
+                "-vf", f"tpad=stop_mode=clone:stop={stop_frames}",
+                "-c:v", "h264_nvenc",
                 "-pix_fmt", "yuv420p",
-                "-preset", "fast",
+                "-preset", "p4",
+                "-cq", "23",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+    @staticmethod
+    def _freeze_head(
+        video_path: Path,
+        output_path: Path,
+        duration: float,
+        fps: int,
+    ) -> None:
+        """Prepends `duration` seconds of the video's actual first frame.
+
+        Uses tpad so the frozen frame is pixel-identical to the first decoded
+        frame — no PNG extraction, no codec seam.
+        """
+        start_frames = round(duration * fps)
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", str(video_path),
+                "-vf", f"tpad=start_mode=clone:start={start_frames}",
+                "-c:v", "h264_nvenc",
+                "-pix_fmt", "yuv420p",
+                "-preset", "p4",
+                "-cq", "23",
                 str(output_path),
             ],
             check=True,

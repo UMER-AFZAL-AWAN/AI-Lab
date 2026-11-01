@@ -1,5 +1,5 @@
 """
-Dry-run test for inject_scene freeze-frame anchor fix.
+Dry-run test for inject_scene tpad freeze approach.
 No AnimateDiff models needed -- a synthetic blue clip stands in for AI output.
 Requires: ffmpeg on PATH, enhanced.mp4 in C:\\AI-Lab\\OutputVideo\\
 """
@@ -35,6 +35,7 @@ def run_dryrun():
     TIMESTAMP = 10.0
     TRANSITION = 0.5
     FPS = 60
+    FREEZE_SEC = 1.0
 
     tmp = Path(tempfile.mkdtemp(prefix="lvs_dryrun_"))
     try:
@@ -54,59 +55,36 @@ def run_dryrun():
         assert part1.stat().st_size > 0 and part2.stat().st_size > 0
         print("  OK")
 
-        # Step 2: extract last frame of part1
-        print("Step 2: extract freeze frame...")
-        frame_png = tmp / "freeze_frame.png"
-        subprocess.run(
-            ["ffmpeg", "-y", "-sseof", "-1", "-i", str(part1),
-             "-frames:v", "1", str(frame_png)],
-            check=True, capture_output=True,
-        )
-        assert frame_png.stat().st_size > 0
-        print("  OK")
-
-        # Step 3: create freeze_hold (1 second of the freeze frame)
-        print("Step 3: create freeze_hold clip...")
-        freeze_hold = tmp / "freeze_hold.mp4"
-        subprocess.run(
-            ["ffmpeg", "-y",
-             "-loop", "1", "-framerate", str(FPS), "-i", str(frame_png),
-             "-vf", f"scale={w}:{h}:force_original_aspect_ratio=disable",
-             "-t", "1.0",
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast",
-             str(freeze_hold)],
-            check=True, capture_output=True,
-        )
-        assert freeze_hold.stat().st_size > 0
-        print("  OK")
-
-        # Step 4: build part1_frozen and part2_frozen
-        print("Step 4: concat part1+freeze and freeze+part2...")
+        # Step 2: freeze tail of part1 using tpad (clone last frame)
+        print("Step 2: freeze last frame of part1 (tpad clone)...")
         part1_frozen = tmp / "part1_frozen.mp4"
-        part2_frozen = tmp / "part2_frozen.mp4"
-
-        c1 = tmp / "c1.txt"
-        c1.write_text(f"file '{part1.as_posix()}'\nfile '{freeze_hold.as_posix()}'\n",
-                      encoding="utf-8")
+        stop_frames = round(FREEZE_SEC * FPS)
         subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-             "-i", str(c1), "-c", "copy", str(part1_frozen)],
+            ["ffmpeg", "-y", "-i", str(part1),
+             "-vf", f"tpad=stop_mode=clone:stop={stop_frames}",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             str(part1_frozen)],
             check=True, capture_output=True,
         )
-
-        c2 = tmp / "c2.txt"
-        c2.write_text(f"file '{freeze_hold.as_posix()}'\nfile '{part2.as_posix()}'\n",
-                      encoding="utf-8")
-        subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-             "-i", str(c2), "-c", "copy", str(part2_frozen)],
-            check=True, capture_output=True,
-        )
-        assert part1_frozen.stat().st_size > 0 and part2_frozen.stat().st_size > 0
+        assert part1_frozen.stat().st_size > 0
         print("  OK")
 
-        # Step 5: synthetic AI loop (solid blue, 4s at video fps and dimensions)
-        print("Step 5: create synthetic AI loop (blue clip)...")
+        # Step 3: freeze head of part2 using tpad (clone first frame)
+        print("Step 3: freeze first frame of part2 (tpad clone)...")
+        part2_frozen = tmp / "part2_frozen.mp4"
+        start_frames = round(FREEZE_SEC * FPS)
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(part2),
+             "-vf", f"tpad=start_mode=clone:start={start_frames}",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             str(part2_frozen)],
+            check=True, capture_output=True,
+        )
+        assert part2_frozen.stat().st_size > 0
+        print("  OK")
+
+        # Step 4: synthetic AI loop (solid blue, 4s at full resolution and fps)
+        print("Step 4: create synthetic AI loop (blue clip)...")
         ai_loop = tmp / "ai_loop.mp4"
         subprocess.run(
             ["ffmpeg", "-y",
@@ -119,8 +97,8 @@ def run_dryrun():
         assert ai_loop.stat().st_size > 0
         print("  OK")
 
-        # Step 6: chained xfade (3 clips, 2 xfades, 1 ffmpeg call)
-        print("Step 6: chained xfade (3 clips, 2 xfades, 1 ffmpeg call)...")
+        # Step 5: chained xfade (3 clips, 2 xfades, 1 ffmpeg call)
+        print("Step 5: chained xfade (3 clips, 2 xfades, 1 ffmpeg call)...")
         dur_a = ffprobe_duration(part1_frozen)
         dur_b = ffprobe_duration(ai_loop)
         offset1 = max(0.0, dur_a - TRANSITION)
@@ -149,7 +127,7 @@ def run_dryrun():
         assert final.stat().st_size > 0
         print("  OK")
 
-        dest = Path("C:/AI-Lab/OutputVideo/test_inject_freeze_dryrun.mp4")
+        dest = Path("C:/AI-Lab/OutputVideo/test_inject_tpad_dryrun.mp4")
         shutil.copy(final, dest)
 
         dur_final = ffprobe_duration(dest)
@@ -158,13 +136,13 @@ def run_dryrun():
         print(f"Duration: {dur_final:.2f}s")
         print()
         print("WHAT TO VERIFY when you open the video:")
-        print("  0s-10s   : game plays normally")
-        print("  ~10s     : game freezes on exact frame (same frame, no cut)")
-        print("  ~10.5s   : freeze frame dissolves into BLUE clip")
-        print("  ~10.5-14s: blue clip plays")
-        print("  ~14s     : blue clip dissolves back to freeze frame")
-        print("  ~14.5s   : freeze frame holds, then game resumes from 10s")
-        print("  14.5s-end: game continues")
+        print("  0s-10s     : game plays normally (moving footage)")
+        print("  ~10s       : game FREEZES on exact last frame (no cut visible)")
+        print("  ~10.5s     : frozen frame dissolves into BLUE")
+        print("  ~10.5-14.5s: blue clip plays")
+        print("  ~14.5s     : blue dissolves back to same frozen frame")
+        print("  ~15s       : freeze hold ends, game resumes from 10s")
+        print("  15s-end    : game continues")
 
     except subprocess.CalledProcessError as e:
         print(f"\nFAILED at ffmpeg step.")
