@@ -30,6 +30,14 @@ class EnhancementConfig(ProcessorConfig):
     nvenc: bool = True              # use h264_nvenc; falls back to libx264
 
 
+@dataclass
+class CrossfadeConfig(ProcessorConfig):
+    """Controls ffmpeg xfade dissolve between two clips."""
+    second_clip: Path = None          # video B (the "to" clip)
+    transition_duration: float = 0.5  # seconds for the dissolve
+    fps: int = 60                     # output fps (must match enhanced video)
+
+
 class IVideoProcessor(ABC):
     """Takes a video file in, returns a processed video file out."""
 

@@ -121,7 +121,8 @@ class AnimateDiffGenerator(IVideoGenerator):
         # cpu_offload moves each sub-model to GPU only when it is needed,
         # so peak VRAM stays around 4-5 GB instead of ~8 GB.
         pipe.enable_model_cpu_offload()
-        pipe.enable_vae_slicing()
+        if hasattr(pipe, "enable_vae_slicing"):
+            pipe.enable_vae_slicing()
 
         self._pipe = pipe
         return self._pipe

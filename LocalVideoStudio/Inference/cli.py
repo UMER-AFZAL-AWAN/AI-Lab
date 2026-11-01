@@ -25,7 +25,7 @@ from pathlib import Path
 # Ensure the package root is on sys.path when running as a script
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from Inference.pipeline.studio_pipeline import StudioPipeline, InjectionPoint
+from Inference.pipeline.studio_pipeline import StudioPipeline
 from Inference.interfaces.video_processor import EnhancementConfig, InterpolationConfig
 
 
@@ -45,22 +45,20 @@ def cmd_enhance(args: argparse.Namespace) -> None:
 
 
 def cmd_inject(args: argparse.Namespace) -> None:
-    pipeline  = StudioPipeline()
-    injection = InjectionPoint(
-        timestamp_seconds  = args.timestamp,
-        prompt             = args.prompt,
-        negative_prompt    = args.negative_prompt,
-        loop_duration_sec  = args.loop_duration,
-        width              = args.width,
-        height             = args.height,
-        num_inference_steps= args.steps,
-        guidance_scale     = args.cfg,
-        seed               = args.seed,
-    )
-    pipeline.generate_and_inject_loop(
-        input_path  = Path(args.input),
-        output_path = Path(args.output),
-        injection   = injection,
+    pipeline = StudioPipeline()
+    pipeline.inject_scene(
+        input_path          = Path(args.input),
+        output_path         = Path(args.output),
+        timestamp_seconds   = args.timestamp,
+        prompt              = args.prompt,
+        negative_prompt     = args.negative_prompt,
+        loop_duration_sec   = args.duration,
+        transition_duration = args.transition,
+        width               = args.width,
+        height              = args.height,
+        num_inference_steps = args.steps,
+        guidance_scale      = args.cfg,
+        seed                = args.seed,
     )
 
 
@@ -92,9 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_inj.add_argument("--timestamp",       type=float, required=True,
                        help="Injection point in seconds (e.g. 15.0)")
     p_inj.add_argument("--prompt",          required=True)
-    p_inj.add_argument("--negative-prompt", default="blurry, low quality, watermark, text")
-    p_inj.add_argument("--loop-duration",   type=int, default=4,
+    p_inj.add_argument("--negative-prompt", default="blurry, low quality, watermark, text, deformed, ugly")
+    p_inj.add_argument("--duration",        type=int, default=4,
                        help="Target loop length in seconds")
+    p_inj.add_argument("--transition",      type=float, default=0.5,
+                       help="Crossfade duration in seconds")
     p_inj.add_argument("--width",           type=int, default=512)
     p_inj.add_argument("--height",          type=int, default=512)
     p_inj.add_argument("--steps",           type=int, default=25)

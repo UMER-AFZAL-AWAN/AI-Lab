@@ -47,10 +47,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..interfaces.video_generator import GenerationRequest
-from ..interfaces.video_processor import InterpolationConfig, EnhancementConfig
+from ..interfaces.video_processor import InterpolationConfig, EnhancementConfig, CrossfadeConfig
 from ..generators.animatediff_generator import AnimateDiffGenerator
 from ..processors.rife_interpolator import RifeInterpolator
 from ..processors.video_enhancer import VideoEnhancer
+from ..processors.crossfade_transitioner import CrossfadeTransitioner
 from ..config import OUTPUT_VIDEO_DIR
 
 
@@ -73,9 +74,10 @@ class InjectionPoint:
 class StudioPipeline:
 
     def __init__(self) -> None:
-        self._generator   = AnimateDiffGenerator()
+        self._generator    = AnimateDiffGenerator()
         self._interpolator = RifeInterpolator()
-        self._enhancer    = VideoEnhancer()
+        self._enhancer     = VideoEnhancer()
+        self._crossfader   = CrossfadeTransitioner()
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -106,6 +108,104 @@ class StudioPipeline:
         print(f"Enhancement complete -> {output_path}")
         return output_path
 
+    def inject_scene(
+        self,
+        input_path: Path,
+        output_path: Path,
+        timestamp_seconds: float,
+        prompt: str,
+        negative_prompt: str = "blurry, low quality, watermark, text, deformed, ugly",
+        loop_duration_sec: int = 4,
+        transition_duration: float = 0.5,
+        width: int = 512,
+        height: int = 512,
+        num_inference_steps: int = 25,
+        guidance_scale: float = 7.5,
+        seed: int = -1,
+    ) -> Path:
+        """
+        Splits input_path at timestamp_seconds, generates an AnimateDiff ping-pong
+        loop from prompt, grades it to match the game footage, then dissolves it
+        in and out with crossfade transitions so the game resumes from the same frame.
+
+        input_path must already be enhanced — this method does not enhance the
+        game parts, only the AI-generated loop.
+        """
+        from diffusers.utils import export_to_video
+
+        fps = 8
+        half_frames = max(8, (loop_duration_sec * fps) // 2)
+
+        with _TempDir() as tmp:
+            part1 = tmp / "part1.mp4"
+            part2 = tmp / "part2.mp4"
+
+            print(f"[1/7] Splitting video at {timestamp_seconds}s...")
+            self._split_video(input_path, timestamp_seconds, part1, part2)
+
+            print("[2/7] Extracting last frame of part1...")
+            frame_png = tmp / "freeze_frame.png"
+            self._extract_frame(part1, frame_png)
+
+            print("[3/7] Generating AnimateDiff seamless loop...")
+            request = GenerationRequest(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                num_frames=half_frames,
+                fps=fps,
+                width=width,
+                height=height,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                seed=seed,
+            )
+            loop_raw = tmp / "loop_raw.mp4"
+            result = self._generator.generate_seamless_loop(request)
+            export_to_video(result.frames, str(loop_raw), fps=result.fps)
+
+            print("[4/7] Grading loop to match game footage...")
+            loop_graded = tmp / "loop_graded.mp4"
+            self._enhancer.process(
+                loop_raw,
+                loop_graded,
+                EnhancementConfig(auto_crop=False, cinematic_bars=False),
+            )
+
+            print("[5/7] Crossfade: part1 -> loop...")
+            xfade_in = tmp / "xfade_in.mp4"
+            self._crossfader.process(
+                part1,
+                xfade_in,
+                CrossfadeConfig(
+                    second_clip=loop_graded,
+                    transition_duration=transition_duration,
+                    fps=60,
+                ),
+            )
+
+            print("[6/7] Crossfade: loop -> part2...")
+            xfade_out = tmp / "xfade_out.mp4"
+            self._crossfader.process(
+                loop_graded,
+                xfade_out,
+                CrossfadeConfig(
+                    second_clip=part2,
+                    transition_duration=transition_duration,
+                    fps=60,
+                ),
+            )
+
+            print("[7/7] Assembling final video...")
+            concat_list = tmp / "concat.txt"
+            concat_list.write_text(
+                f"file '{xfade_in.as_posix()}'\nfile '{xfade_out.as_posix()}'\n",
+                encoding="utf-8",
+            )
+            self._concat_videos(concat_list, output_path)
+
+        print(f"inject_scene complete -> {output_path}")
+        return output_path
+
     def generate_and_inject_loop(
         self,
         input_path: Path,
@@ -117,8 +217,8 @@ class StudioPipeline:
         Generates a seamless cinematic loop and splices it into input_path
         at the requested timestamp.
 
-        The loop transitions are abrupt cuts.  For crossfades, call
-        add_crossfade_transitions() on the result (planned in next version).
+        Deprecated: use inject_scene() instead, which accepts an already-enhanced
+        video and adds smooth crossfade transitions at the cut points.
         """
         enh_cfg = enhancement or EnhancementConfig()
 
@@ -181,6 +281,16 @@ class StudioPipeline:
 
         result = self._generator.generate_seamless_loop(request)
         export_to_video(result.frames, str(output_path), fps=result.fps)
+
+    @staticmethod
+    def _extract_frame(video_path: Path, out_png: Path) -> None:
+        """Extracts the last frame of video_path as a PNG."""
+        subprocess.run(
+            ["ffmpeg", "-y", "-sseof", "-1",
+             "-i", str(video_path),
+             "-frames:v", "1", str(out_png)],
+            check=True, capture_output=True,
+        )
 
     @staticmethod
     def _split_video(source: Path, at_seconds: float, part1: Path, part2: Path) -> None:
