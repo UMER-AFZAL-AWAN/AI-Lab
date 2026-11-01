@@ -125,34 +125,74 @@ class StudioPipeline:
     ) -> Path:
         """
         Splits input_path at timestamp_seconds, generates an AnimateDiff ping-pong
-        loop from prompt, grades it to match the game footage, then dissolves it
-        in and out with crossfade transitions so the game resumes from the same frame.
+        loop from prompt, grades it, and assembles the final video with freeze-frame
+        anchors and chained crossfade transitions.
 
-        input_path must already be enhanced — this method does not enhance the
-        game parts, only the AI-generated loop.
+        Structure:
+          game plays -> freezes on frame T -> dissolves to AI scene ->
+          dissolves back to same frame T -> game resumes from T.
+
+        input_path must already be enhanced — this method does not re-enhance
+        the game footage.
         """
         from diffusers.utils import export_to_video
 
-        fps = 8
-        half_frames = max(8, (loop_duration_sec * fps) // 2)
+        gen_fps = 8
+        half_frames = max(8, (loop_duration_sec * gen_fps) // 2)
+        video_fps = 60
 
         with _TempDir() as tmp:
             part1 = tmp / "part1.mp4"
             part2 = tmp / "part2.mp4"
 
-            print(f"[1/7] Splitting video at {timestamp_seconds}s...")
+            print(f"[1/8] Splitting video at {timestamp_seconds}s...")
             self._split_video(input_path, timestamp_seconds, part1, part2)
 
-            print("[2/7] Extracting last frame of part1...")
+            print("[2/8] Probing input dimensions...")
+            vid_w, vid_h = CrossfadeTransitioner._get_dimensions(input_path)
+
+            print("[3/8] Extracting freeze frame from part1...")
             frame_png = tmp / "freeze_frame.png"
             self._extract_frame(part1, frame_png)
 
-            print("[3/7] Generating AnimateDiff seamless loop...")
+            print("[4/8] Creating freeze-hold clip (1s still)...")
+            freeze_hold = tmp / "freeze_hold.mp4"
+            self._create_freeze_hold(frame_png, freeze_hold,
+                                     duration=1.0, fps=video_fps,
+                                     width=vid_w, height=vid_h)
+
+            print("[5/8] Building part1_frozen and part2_frozen...")
+            part1_frozen = tmp / "part1_frozen.mp4"
+            part2_frozen = tmp / "part2_frozen.mp4"
+
+            c1 = tmp / "c1.txt"
+            c1.write_text(
+                f"file '{part1.as_posix()}'\nfile '{freeze_hold.as_posix()}'\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                 "-i", str(c1), "-c", "copy", str(part1_frozen)],
+                check=True, capture_output=True,
+            )
+
+            c2 = tmp / "c2.txt"
+            c2.write_text(
+                f"file '{freeze_hold.as_posix()}'\nfile '{part2.as_posix()}'\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                 "-i", str(c2), "-c", "copy", str(part2_frozen)],
+                check=True, capture_output=True,
+            )
+
+            print("[6/8] Generating AnimateDiff seamless loop...")
             request = GenerationRequest(
                 prompt=prompt,
                 negative_prompt=negative_prompt,
                 num_frames=half_frames,
-                fps=fps,
+                fps=gen_fps,
                 width=width,
                 height=height,
                 num_inference_steps=num_inference_steps,
@@ -163,7 +203,7 @@ class StudioPipeline:
             result = self._generator.generate_seamless_loop(request)
             export_to_video(result.frames, str(loop_raw), fps=result.fps)
 
-            print("[4/7] Grading loop to match game footage...")
+            print("[7/8] Grading loop to match game footage...")
             loop_graded = tmp / "loop_graded.mp4"
             self._enhancer.process(
                 loop_raw,
@@ -171,37 +211,15 @@ class StudioPipeline:
                 EnhancementConfig(auto_crop=False, cinematic_bars=False),
             )
 
-            print("[5/7] Crossfade: part1 -> loop...")
-            xfade_in = tmp / "xfade_in.mp4"
-            self._crossfader.process(
-                part1,
-                xfade_in,
-                CrossfadeConfig(
-                    second_clip=loop_graded,
-                    transition_duration=transition_duration,
-                    fps=60,
-                ),
+            print("[8/8] Chained xfade: part1_frozen -> loop -> part2_frozen...")
+            self._chained_xfade(
+                part1_frozen, loop_graded, part2_frozen,
+                output_path,
+                transition=transition_duration,
+                fps=video_fps,
+                width=vid_w,
+                height=vid_h,
             )
-
-            print("[6/7] Crossfade: loop -> part2...")
-            xfade_out = tmp / "xfade_out.mp4"
-            self._crossfader.process(
-                loop_graded,
-                xfade_out,
-                CrossfadeConfig(
-                    second_clip=part2,
-                    transition_duration=transition_duration,
-                    fps=60,
-                ),
-            )
-
-            print("[7/7] Assembling final video...")
-            concat_list = tmp / "concat.txt"
-            concat_list.write_text(
-                f"file '{xfade_in.as_posix()}'\nfile '{xfade_out.as_posix()}'\n",
-                encoding="utf-8",
-            )
-            self._concat_videos(concat_list, output_path)
 
         print(f"inject_scene complete -> {output_path}")
         return output_path
@@ -281,6 +299,94 @@ class StudioPipeline:
 
         result = self._generator.generate_seamless_loop(request)
         export_to_video(result.frames, str(output_path), fps=result.fps)
+
+    @staticmethod
+    def _create_freeze_hold(
+        frame_png: Path,
+        output_path: Path,
+        duration: float,
+        fps: int,
+        width: int,
+        height: int,
+    ) -> None:
+        """Turns a single PNG into a short video clip of the given duration."""
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-loop", "1",
+                "-framerate", str(fps),
+                "-i", str(frame_png),
+                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=disable",
+                "-t", str(duration),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", "fast",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+    @staticmethod
+    def _chained_xfade(
+        clip_a: Path,
+        clip_b: Path,
+        clip_c: Path,
+        output_path: Path,
+        transition: float,
+        fps: int,
+        width: int,
+        height: int,
+    ) -> None:
+        """
+        Chains two xfades in a single ffmpeg call:
+          clip_a -xfade-> clip_b -xfade-> clip_c -> output_path
+
+        Two separate ffmpeg calls would duplicate clip_b; one filter_complex
+        call is the only correct approach.
+
+        Offset maths:
+          offset1 = dur_a - transition
+          offset2 = dur_a + dur_b - 2 * transition
+        """
+        def _dur(p: Path) -> float:
+            r = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", str(p)],
+                capture_output=True, text=True, check=True,
+            )
+            return float(r.stdout.strip())
+
+        dur_a = _dur(clip_a)
+        dur_b = _dur(clip_b)
+        offset1 = max(0.0, dur_a - transition)
+        offset2 = max(0.0, dur_a + dur_b - 2 * transition)
+
+        fc = (
+            f"[0:v]fps={fps},scale={width}:{height}:force_original_aspect_ratio=disable[va];"
+            f"[1:v]fps={fps},scale={width}:{height}:force_original_aspect_ratio=disable[vb];"
+            f"[2:v]fps={fps},scale={width}:{height}:force_original_aspect_ratio=disable[vc];"
+            f"[va][vb]xfade=transition=fade:duration={transition:.3f}:offset={offset1:.3f}[x1];"
+            f"[x1][vc]xfade=transition=fade:duration={transition:.3f}:offset={offset2:.3f}[out]"
+        )
+
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", str(clip_a),
+                "-i", str(clip_b),
+                "-i", str(clip_c),
+                "-filter_complex", fc,
+                "-map", "[out]",
+                "-c:v", "h264_nvenc",
+                "-pix_fmt", "yuv420p",
+                "-preset", "p4",
+                "-cq", "23",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+        )
 
     @staticmethod
     def _extract_frame(video_path: Path, out_png: Path) -> None:
