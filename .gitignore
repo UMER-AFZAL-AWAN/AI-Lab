@@ -11,3 +11,5 @@ __pycache__/
 *.pyo
 /InputVideo
 .idea/
+/.vscode
+/Discussion with Chat GPT
