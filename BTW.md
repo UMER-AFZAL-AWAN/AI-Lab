@@ -1,3 +1,49 @@
+# BTW: My Background and What I Am Trying to Learn
+
+I am a Software Engineer (C#, .NET, Python, distributed systems) transitioning
+into AI/ML engineering. I am a beginner on the AI/ML side — I do not yet have
+working knowledge of tensors, neural networks, diffusion, attention, or GPU
+memory behaviour.
+
+My goal is **model-independent AI/ML engineering knowledge**: the ability to
+pick up an unfamiliar model repository, read its paper, understand its
+architecture, identify the required files, load it, run inference, measure
+hardware usage, and optimize it. Not just following tutorials.
+
+**Hardware:** Alienware Aurora 16x, RTX 5060 Laptop (8 GB VRAM), 32 GB RAM,
+Windows 11, CUDA 13, Python 3.12.3 venv at `C:\AI-Lab\.venv`.
+
+**Key hardware rule:** A checkpoint file size is not the same as its inference
+memory requirement. A 14 GB W4A8 checkpoint does not automatically fit in 8 GB
+VRAM — the pipeline also needs encoders, VAE, activations, and buffers.
+
+**Learning roadmap I have agreed on:**
+
+| Stage | Subject |
+|---|---|
+| 1 | PyTorch fundamentals — tensors, GPU operations |
+| 2 | Neural network basics |
+| 3 | CNN architectures |
+| 4 | Transformer architecture |
+| 5 | VAE and latent representations |
+| 6 | Diffusion architecture |
+| 7 | Video generation pipelines |
+| 8 | Quantization and offloading for 8 GB VRAM |
+| 9 | Research reproduction |
+| 10 | ONNX and C# deployment |
+
+**Model under investigation (not yet downloaded):**
+`TenStrip/10Eros-Max` — a MiniMax-H3-based text/image-to-video model.
+Full checkpoint ~40 GB, INT8 ~21 GB, W4A8 ~14 GB. Likely not practical on
+8 GB VRAM without substantial compromise. Hardware assessment required before
+any download.
+
+**Teaching preference:** Simple language first → technical definition → why it
+exists → how it works → C#/.NET analogy → small Python example with exact
+commands → expected output → practical exercise. One step at a time.
+
+---
+
 # BTW: VFR and Why It Broke RIFE
 
 This note explains a subtle bug in phone screen recordings that caused the
