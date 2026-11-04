@@ -81,6 +81,20 @@ Or open in VS Code and press F5 (uses your .venv Python).
   03_inspect_gpu.py        ← CUDA info, VRAM status, Tensor Core benchmark
   04_inspect_model.py      ← Counting params, state dict, forward hooks
 
+10_lora_and_fine_tuning/
+  01_what_is_lora.py       ← LoRA math: A@B delta, rank, compression ratio
+  02_load_and_use_lora.py  ← load_lora_weights(), scale, multi-LoRA, fuse
+
+10_the_practice/
+  01_animatediff_from_scratch.py ← Full pipe() loop in 7 explicit steps
+
+11_controlnet_and_ip_adapter/
+  01_controlnet.py         ← Structural guidance (pose, depth, edges)
+  02_ip_adapter.py         ← Appearance transfer from a reference image
+
+12_video_metrics/
+  01_measuring_quality.py  ← PSNR, SSIM, CLIP score, FVD explained + runnable
+
 13_model_investigation/    ← PRIMARY GOAL: running unfamiliar models
   01_reading_a_hf_repo.py  ← Anatomy of a HF repo before downloading
   02_checkpoint_vs_architecture.py ← Why wrong loader class → crash (the H3 lesson)
@@ -108,9 +122,13 @@ PAPER_METHOD.md            ← 15-point checklist for investigating any research
 7. `08_inference_optimization/` — especially `01_precision_dtypes.py`
 8. `09_the_stack/` — the big picture
 9. `06_gan/` and `07_other_architectures/` — for completeness
-10. `13_model_investigation/` — **primary goal**: how to run any unfamiliar model
-11. `14_hf_libraries/` — the HF toolkit in depth
-12. `PAPER_METHOD.md` — before reading any new paper
+10. `10_the_practice/` — write the full inference loop yourself (no magic)
+11. `10_lora_and_fine_tuning/` — snap styles onto existing models
+12. `11_controlnet_and_ip_adapter/` — structure and appearance control
+13. `12_video_metrics/` — measure quality with numbers
+14. `13_model_investigation/` — **primary goal**: how to run any unfamiliar model
+15. `14_hf_libraries/` — the HF toolkit in depth
+16. `PAPER_METHOD.md` — before reading any new paper
 
 ---
 
@@ -126,3 +144,8 @@ PAPER_METHOD.md            ← 15-point checklist for investigating any research
 | Investigating a new model | HF repo anatomy, VRAM budget | `13_model_investigation/` |
 | Swapping AnimateDiff → Wan | DiT, Flow Matching, pipeline swap | `04/07_dit_and_flow_matching.py`, `14_hf_libraries/01_diffusers.py` |
 | Reading a paper | 15-point checklist | `PAPER_METHOD.md` |
+| Adding a style (LoRA) | LoRA math, loading, scale | `10_lora_and_fine_tuning/` |
+| Structural guidance | ControlNet (pose/depth/edges) | `11_controlnet_and_ip_adapter/01_controlnet.py` |
+| Style from reference image | IP-Adapter | `11_controlnet_and_ip_adapter/02_ip_adapter.py` |
+| Measuring generated quality | PSNR, SSIM, CLIP score, FVD | `12_video_metrics/01_measuring_quality.py` |
+| "What does pipe() actually do?" | Full loop unwrapped | `10_the_practice/01_animatediff_from_scratch.py` |
