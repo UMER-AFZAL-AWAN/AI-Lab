@@ -151,10 +151,16 @@ only one summary number per small region — reduces size and memory)*.
 
 ```
 Feature map (4×4):        After Max Pool 2×2:
-  1   3   2   4              3   4
-  5   2   1   0    →         5   8
-  3   1   8   2              3   8
-  0   2   4   8
+  1   3 | 2   4
+  5   2 | 1   0    →    5   4
+  ------+------
+  3   1 | 8   2         3   8
+  0   2 | 4   8
+
+  Top-left block:    max(1,3,5,2) = 5
+  Top-right block:   max(2,4,1,0) = 4
+  Bottom-left block: max(3,1,0,2) = 3
+  Bottom-right block:max(8,2,4,8) = 8
 ```
 
 Each 2×2 block → 1 number (the largest). Image goes from 4×4 → 2×2.
