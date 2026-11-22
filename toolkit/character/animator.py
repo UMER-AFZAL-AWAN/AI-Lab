@@ -70,7 +70,10 @@ class CharacterAnimator:
         """
         _validate_request(request)
         pipe     = self._get_pipeline(use_controlnet=request.pose_image is not None)
-        face_emb = self._extract_face_embedding(request.reference_photo)
+        face_emb  = self._extract_face_embedding(request.reference_photo)
+        # Classifier-free guidance requires [neg_emb, pos_emb] concatenated on dim 0 → [2, 1, 512]
+        neg_emb   = torch.zeros_like(face_emb)
+        cfgd_emb  = torch.cat([neg_emb, face_emb], dim=0).half()
         generator = _make_generator(request.seed)
 
         log.step(1, 2, f"Generating {request.num_frames} frames @ {request.width}×{request.height}")
@@ -83,7 +86,7 @@ class CharacterAnimator:
             height              = request.height,
             num_inference_steps = request.num_inference_steps,
             guidance_scale      = request.guidance_scale,
-            ip_adapter_image_embeds = [face_emb],
+            ip_adapter_image_embeds = [cfgd_emb],
             generator           = generator,
         )
 
@@ -142,7 +145,7 @@ class CharacterAnimator:
             faces = sorted(faces, key=lambda f: f.bbox[2] * f.bbox[3], reverse=True)
 
         # IP-Adapter FaceID expects the embedding as a float16 tensor on CPU
-        emb = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0).float()
+        emb = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0).unsqueeze(0).half()
         log.info("character", f"face embedding extracted (shape {emb.shape})")
         return emb
 
