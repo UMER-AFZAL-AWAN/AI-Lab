@@ -1,32 +1,34 @@
 """
-Command-line interface for LocalVideoStudio.
+LocalVideoStudio — command-line interface.
 
 Examples
 ────────
-# Enhance the game recording
-python -m Inference.cli enhance \
-    --input  "C:/AI-Lab/InputVideo/input.mp4" \
+# Enhance a game recording (frame interpolation + cinematic grade)
+python -m Inference.cli enhance \\
+    --input  "C:/AI-Lab/InputVideo/input.mp4" \\
     --output "C:/AI-Lab/OutputVideo/enhanced.mp4"
 
-# Generate and inject a cinematic loop at 15 seconds
-python -m Inference.cli inject \
-    --input     "C:/AI-Lab/InputVideo/input.mp4" \
-    --output    "C:/AI-Lab/OutputVideo/with_loop.mp4" \
-    --timestamp 15.0 \
+# Generate an AI scene and inject it at 15 seconds
+python -m Inference.cli inject \\
+    --input     "C:/AI-Lab/InputVideo/enhanced.mp4" \\
+    --output    "C:/AI-Lab/OutputVideo/with_scene.mp4" \\
+    --timestamp 15.0 \\
     --prompt    "A knight at a castle gate, dramatic lighting, cinematic, 4k"
 
-Run from C:\\AI-Lab\\LocalVideoStudio with the project venv active.
+Run from C:\\AI-Lab with the project venv active.
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
-# Ensure the package root is on sys.path when running as a script
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))  # C:\AI-Lab on sys.path
 
+from toolkit.logging import configure_logging
+from toolkit.rife.config  import InterpolationConfig
+from toolkit.color.config import EnhancementConfig
 from Inference.pipeline.studio_pipeline import StudioPipeline
-from Inference.interfaces.video_processor import EnhancementConfig, InterpolationConfig
 
 
 def cmd_enhance(args: argparse.Namespace) -> None:
@@ -65,41 +67,42 @@ def cmd_inject(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
         prog="lvs",
-        description="LocalVideoStudio – local AI video production",
+        description="LocalVideoStudio — local AI video production toolkit",
     )
+    root.add_argument("--verbose", action="store_true", help="Debug-level logging")
     sub = root.add_subparsers(dest="command", required=True)
 
-    # ── enhance ──────────────────────────────────────────────────────── #
+    # ── enhance ──────────────────────────────────────────────────────────── #
     p_enh = sub.add_parser("enhance", help="Enhance an existing video cinematically")
-    p_enh.add_argument("--input",      required=True)
-    p_enh.add_argument("--output",     required=True)
-    p_enh.add_argument("--exp",        type=int, default=1,
-                       help="Frame interpolation multiplier exponent (1=2×, 2=4×)")
-    p_enh.add_argument("--no-fp16",      action="store_true")
-    p_enh.add_argument("--no-grade",     action="store_true", help="Skip color grading")
-    p_enh.add_argument("--no-bars",      action="store_true", help="Skip letterbox bars")
-    p_enh.add_argument("--no-denoise",   action="store_true")
-    p_enh.add_argument("--no-autocrop",  action="store_true",
+    p_enh.add_argument("--input",       required=True)
+    p_enh.add_argument("--output",      required=True)
+    p_enh.add_argument("--exp",         type=int, default=1,
+                       help="Frame interpolation exponent (1=2×, 2=4×)")
+    p_enh.add_argument("--no-fp16",     action="store_true")
+    p_enh.add_argument("--no-grade",    action="store_true", help="Skip color grading")
+    p_enh.add_argument("--no-bars",     action="store_true", help="Skip letterbox bars")
+    p_enh.add_argument("--no-denoise",  action="store_true")
+    p_enh.add_argument("--no-autocrop", action="store_true",
                        help="Skip native black-bar detection and removal")
     p_enh.set_defaults(func=cmd_enhance)
 
-    # ── inject ───────────────────────────────────────────────────────── #
-    p_inj = sub.add_parser("inject", help="Generate a cinematic loop and inject it")
+    # ── inject ───────────────────────────────────────────────────────────── #
+    p_inj = sub.add_parser("inject", help="Generate an AI scene and inject it into a video")
     p_inj.add_argument("--input",           required=True)
     p_inj.add_argument("--output",          required=True)
     p_inj.add_argument("--timestamp",       type=float, required=True,
                        help="Injection point in seconds (e.g. 15.0)")
     p_inj.add_argument("--prompt",          required=True)
     p_inj.add_argument("--negative-prompt", default="blurry, low quality, watermark, text, deformed, ugly")
-    p_inj.add_argument("--duration",        type=int, default=4,
+    p_inj.add_argument("--duration",        type=int,   default=4,
                        help="Target loop length in seconds")
     p_inj.add_argument("--transition",      type=float, default=0.5,
                        help="Crossfade duration in seconds")
-    p_inj.add_argument("--width",           type=int, default=512)
-    p_inj.add_argument("--height",          type=int, default=512)
-    p_inj.add_argument("--steps",           type=int, default=25)
+    p_inj.add_argument("--width",           type=int,   default=512)
+    p_inj.add_argument("--height",          type=int,   default=512)
+    p_inj.add_argument("--steps",           type=int,   default=25)
     p_inj.add_argument("--cfg",             type=float, default=7.5)
-    p_inj.add_argument("--seed",            type=int, default=-1)
+    p_inj.add_argument("--seed",            type=int,   default=-1)
     p_inj.set_defaults(func=cmd_inject)
 
     return root
@@ -108,6 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args   = parser.parse_args()
+    configure_logging(level=logging.DEBUG if args.verbose else logging.INFO)
     args.func(args)
 
 

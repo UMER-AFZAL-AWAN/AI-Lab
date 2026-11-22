@@ -212,8 +212,8 @@ Simple patterns combine into complex ones. This is what "deep" in
 
 ## Step 8: Flattening and classifying
 
-After all conv layers, we have a small tensor of abstract features.
-Shape: (512, 16, 16).
+After all conv layers (following Step 7's 5-layer example), we have a small
+tensor of abstract features. Shape: **(512, 16, 16)**.
 
 **Flatten** *(collapse all dimensions into one long list)*:
 512 × 16 × 16 = 131,072 numbers in a single list.
@@ -339,15 +339,21 @@ Training works by: forward pass → compute **loss** (CrossEntropyLoss) →
 
 ## Shape summary for one image through a CNN
 
+*(5-layer example matching Step 7)*
+
 ```
-Input:              (1, 3, 512, 512)   — 1 image, 3 channels (RGB), 512×512
-After Conv2d(32):   (1, 32, 512, 512)  — 32 feature maps (one per filter)
-After MaxPool2d:    (1, 32, 256, 256)  — spatial size halved
-After Conv2d(64):   (1, 64, 256, 256)  — 64 feature maps
-After MaxPool2d:    (1, 64, 128, 128)
+Input:              (1,   3, 512, 512)  — 1 image, 3 channels (RGB), 512×512
+After Conv2d(32):   (1,  32, 512, 512)  — 32 feature maps (one per filter)
+After MaxPool2d:    (1,  32, 256, 256)  — spatial size halved
+After Conv2d(64):   (1,  64, 256, 256)
+After MaxPool2d:    (1,  64, 128, 128)
 After Conv2d(128):  (1, 128, 128, 128)
-After MaxPool2d:    (1, 128, 64, 64)
-After Flatten:      (1, 524288)        — 128 × 64 × 64 = 524,288 numbers
-After Linear(1000): (1, 1000)          — one score per class
-After Softmax:      (1, 1000)          — one probability per class (sums to 1.0)
+After MaxPool2d:    (1, 128,  64,  64)
+After Conv2d(256):  (1, 256,  64,  64)
+After MaxPool2d:    (1, 256,  32,  32)
+After Conv2d(512):  (1, 512,  32,  32)
+After MaxPool2d:    (1, 512,  16,  16)
+After Flatten:      (1, 131072)         — 512 × 16 × 16 = 131,072 numbers
+After Linear(1000): (1, 1000)           — one score per class
+After Softmax:      (1, 1000)           — one probability per class (sums to 1.0)
 ```
