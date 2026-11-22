@@ -15,6 +15,12 @@ python -m Inference.cli inject \\
     --timestamp 15.0 \\
     --prompt    "A knight at a castle gate, dramatic lighting, cinematic, 4k"
 
+# Animate a person from a reference photo (Higgsfield-style)
+python -m Inference.cli character \\
+    --photo  "C:/AI-Lab/InputVideo/person.jpg" \\
+    --output "C:/AI-Lab/OutputVideo/animated.mp4" \\
+    --prompt "person walking confidently, cinematic lighting"
+
 Run from C:\\AI-Lab with the project venv active.
 """
 
@@ -26,8 +32,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))  # C:\AI-Lab on sys.path
 
 from toolkit.logging import configure_logging
-from toolkit.rife.config  import InterpolationConfig
-from toolkit.color.config import EnhancementConfig
+from toolkit.rife.config      import InterpolationConfig
+from toolkit.color.config     import EnhancementConfig
+from toolkit.character.config import AnimationRequest
 from Inference.pipeline.studio_pipeline import StudioPipeline
 
 
@@ -44,6 +51,29 @@ def cmd_enhance(args: argparse.Namespace) -> None:
             denoise         = not args.no_denoise,
         ),
     )
+
+
+def cmd_character(args: argparse.Namespace) -> None:
+    from diffusers.utils import export_to_video
+    from toolkit.character import CharacterAnimator
+
+    request = AnimationRequest(
+        reference_photo     = Path(args.photo),
+        prompt              = args.prompt,
+        negative_prompt     = args.negative_prompt,
+        pose_image          = Path(args.pose) if args.pose else None,
+        num_frames          = args.frames,
+        fps                 = args.fps,
+        width               = args.width,
+        height              = args.height,
+        num_inference_steps = args.steps,
+        guidance_scale      = args.cfg,
+        ip_adapter_scale    = args.ip_scale,
+        seed                = args.seed,
+    )
+    result = CharacterAnimator().animate_seamless_loop(request) if args.loop \
+             else CharacterAnimator().animate(request)
+    export_to_video(result.frames, args.output, fps=result.fps)
 
 
 def cmd_inject(args: argparse.Namespace) -> None:
@@ -71,6 +101,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     root.add_argument("--verbose", action="store_true", help="Debug-level logging")
     sub = root.add_subparsers(dest="command", required=True)
+
+    # ── character ────────────────────────────────────────────────────────── #
+    p_chr = sub.add_parser("character", help="Animate a person from a reference photo")
+    p_chr.add_argument("--photo",           required=True,  help="Reference photo of the person")
+    p_chr.add_argument("--output",          required=True)
+    p_chr.add_argument("--prompt",          required=True,  help="What the person should do")
+    p_chr.add_argument("--negative-prompt", default="blurry, low quality, watermark, deformed, extra limbs")
+    p_chr.add_argument("--pose",            default=None,   help="Optional OpenPose skeleton image")
+    p_chr.add_argument("--frames",          type=int,   default=16)
+    p_chr.add_argument("--fps",             type=int,   default=8)
+    p_chr.add_argument("--width",           type=int,   default=512)
+    p_chr.add_argument("--height",          type=int,   default=512)
+    p_chr.add_argument("--steps",           type=int,   default=25)
+    p_chr.add_argument("--cfg",             type=float, default=7.5)
+    p_chr.add_argument("--ip-scale",        type=float, default=0.6,
+                       help="Identity strength (0=ignore face, 1=lock face)")
+    p_chr.add_argument("--seed",            type=int,   default=-1)
+    p_chr.add_argument("--loop",            action="store_true",
+                       help="Generate a seamless ping-pong loop")
+    p_chr.set_defaults(func=cmd_character)
 
     # ── enhance ──────────────────────────────────────────────────────────── #
     p_enh = sub.add_parser("enhance", help="Enhance an existing video cinematically")
