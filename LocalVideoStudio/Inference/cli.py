@@ -60,15 +60,13 @@ def cmd_character(args: argparse.Namespace) -> None:
     request = AnimationRequest(
         reference_photo     = Path(args.photo),
         prompt              = args.prompt,
-        negative_prompt     = args.negative_prompt,
-        pose_image          = Path(args.pose) if args.pose else None,
         num_frames          = args.frames,
         fps                 = args.fps,
         width               = args.width,
         height              = args.height,
         num_inference_steps = args.steps,
-        guidance_scale      = args.cfg,
-        ip_adapter_scale    = args.ip_scale,
+        motion_bucket_id    = args.motion,
+        noise_aug_strength  = args.noise_aug,
         seed                = args.seed,
     )
     result = CharacterAnimator().animate_seamless_loop(request) if args.loop \
@@ -104,21 +102,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── character ────────────────────────────────────────────────────────── #
     p_chr = sub.add_parser("character", help="Animate a person from a reference photo")
-    p_chr.add_argument("--photo",           required=True,  help="Reference photo of the person")
-    p_chr.add_argument("--output",          required=True)
-    p_chr.add_argument("--prompt",          required=True,  help="What the person should do")
-    p_chr.add_argument("--negative-prompt", default="blurry, low quality, watermark, deformed, extra limbs")
-    p_chr.add_argument("--pose",            default=None,   help="Optional OpenPose skeleton image")
-    p_chr.add_argument("--frames",          type=int,   default=16)
-    p_chr.add_argument("--fps",             type=int,   default=8)
-    p_chr.add_argument("--width",           type=int,   default=512)
-    p_chr.add_argument("--height",          type=int,   default=512)
-    p_chr.add_argument("--steps",           type=int,   default=25)
-    p_chr.add_argument("--cfg",             type=float, default=7.5)
-    p_chr.add_argument("--ip-scale",        type=float, default=0.6,
-                       help="Identity strength (0=ignore face, 1=lock face)")
-    p_chr.add_argument("--seed",            type=int,   default=-1)
-    p_chr.add_argument("--loop",            action="store_true",
+    p_chr.add_argument("--photo",        required=True, help="Reference photo — becomes frame 0")
+    p_chr.add_argument("--output",       required=True)
+    p_chr.add_argument("--prompt",       default="",    help="Unused by SVD; kept for future use")
+    p_chr.add_argument("--frames",       type=int,   default=25)
+    p_chr.add_argument("--fps",          type=int,   default=8)
+    p_chr.add_argument("--width",        type=int,   default=1024)
+    p_chr.add_argument("--height",       type=int,   default=576)
+    p_chr.add_argument("--steps",        type=int,   default=25)
+    p_chr.add_argument("--motion",       type=int,   default=127,
+                       help="Motion amount 1–255 (higher = more motion)")
+    p_chr.add_argument("--noise-aug",    type=float, default=0.02,
+                       help="Noise augmentation strength (0.02–0.1)")
+    p_chr.add_argument("--seed",         type=int,   default=-1)
+    p_chr.add_argument("--loop",         action="store_true",
                        help="Generate a seamless ping-pong loop")
     p_chr.set_defaults(func=cmd_character)
 
